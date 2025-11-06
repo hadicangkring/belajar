@@ -16,18 +16,32 @@ st.title("🔢 Prediksi Kombinasi Angka — Streamlit Edition")
 # === FUNGSI PEMBANTU ===
 
 # Hari dan pasaran otomatis
-def get_hari_pasaran():
-    hari_map = {
-        "senin": 4, "selasa": 3, "rabu": 7,
-        "kamis": 8, "jumat": 6, "sabtu": 9, "minggu": 5
-    }
-    pasaran_list = ["legi", "pahing", "pon", "wage", "kliwon"]
+from datetime import datetime
 
-    tz = timezone(timedelta(hours=7))
-    now = datetime.now(tz)
-    hari = now.strftime("%A").lower()
-    pasaran = pasaran_list[now.toordinal() % 5]
-    return hari, pasaran, hari_map[hari], {"legi":5,"pahing":9,"pon":7,"wage":4,"kliwon":8}[pasaran]
+def get_hari_pasaran():
+    # Hari dan pasaran sekarang (otomatis)
+    hari = datetime.now().strftime("%A").lower()
+    hari_map = {
+        "monday": "senin",
+        "tuesday": "selasa",
+        "wednesday": "rabu",
+        "thursday": "kamis",
+        "friday": "jumat",
+        "saturday": "sabtu",
+        "sunday": "minggu"
+    }
+
+    hari_id = hari_map.get(hari, "kamis")  # fallback kamis
+
+    pasaran_list = ["legi", "pahing", "pon", "wage", "kliwon"]
+    base_date = datetime(2024, 1, 1)
+    delta_days = (datetime.now() - base_date).days
+    pasaran = pasaran_list[delta_days % 5]
+
+    hari_val_map = {"senin":4, "selasa":3, "rabu":7, "kamis":8, "jumat":6, "sabtu":9, "minggu":5}
+    pasaran_val_map = {"legi":5,"pahing":9,"pon":7,"wage":4,"kliwon":8}
+
+    return hari_id, pasaran, hari_val_map[hari_id], pasaran_val_map[pasaran]
 
 # Angka samaran
 samaran = {
