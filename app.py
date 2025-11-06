@@ -2,14 +2,22 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import re
+import os
 from collections import Counter, defaultdict
 
+# ===============================
+# CONFIG
+# ===============================
 st.set_page_config(page_title="🔢 Prediksi Kombinasi Angka", layout="wide")
-
 st.title("🔮 Prediksi Kombinasi Angka — A, B, dan C")
-st.caption("Analisis berbasis transisi probabilistik + angka samaran (kode rahasia)")
+st.caption("Analisis probabilistik & angka samaran — versi deploy dari repo")
 
-# === Peta Angka Samaran ===
+DATA_PATH = "./data"  # folder di dalam repo (buat folder ini di GitHub)
+FILES = ["a.csv", "b.csv", "c.csv"]
+
+# ===============================
+# PETA ANGKA SAMARAN
+# ===============================
 alias_map = {
     0: [1, 8],
     1: [0, 7],
@@ -20,15 +28,19 @@ alias_map = {
     6: [9, 2],
     7: [4, 1],
     8: [3, 0],
-    9: [6, 3]
+    9: [6, 3],
 }
 
-# === Fungsi bantu ===
+# ===============================
+# FUNGSI PEMROSESAN
+# ===============================
 def clean_number(x):
     """Ambil angka dari string, kembalikan None jika bukan angka"""
-    if pd.isna(x): return None
-    s = re.sub(r'\D', '', str(x))
-    if s == '': return None
+    if pd.isna(x):
+        return None
+    s = re.sub(r"\D", "", str(x))
+    if s == "":
+        return None
     return int(s)
 
 def to_digits(num):
@@ -42,7 +54,13 @@ def apply_alias(num):
     variants = []
     for d in digits:
         variants.append([d] + alias_map[d])
-    combos = [int(f"{a}{b}{c}{d}") for a in variants[0] for b in variants[1] for c in variants[2] for d in variants[3]]
+    combos = [
+        int(f"{a}{b}{c}{d}")
+        for a in variants[0]
+        for b in variants[1]
+        for c in variants[2]
+        for d in variants[3]
+    ]
     return combos
 
 def predict_next(numbers):
@@ -50,20 +68,26 @@ def predict_next(numbers):
     if len(numbers) < 3:
         return np.nan
     transitions = defaultdict(Counter)
-    for i in range(len(numbers)-1):
-        transitions[numbers[i]][numbers[i+1]] += 1
+    for i in range(len(numbers) - 1):
+        transitions[numbers[i]][numbers[i + 1]] += 1
     last = numbers[-1]
-    if last not in transitions:  # fallback jika tidak ada transisi
+    if last not in transitions:
         return int(np.median(numbers))
     next_val = transitions[last].most_common(1)[0][0]
     return int(next_val)
 
-def process_file(file, name):
+def process_file(path, name):
     st.subheader(f"📁 File {name.upper()}")
-    df = pd.read_csv(file)
-    df.replace(r'^\s*$', np.nan, regex=True, inplace=True)
 
+    try:
+        df = pd.read_csv(path)
+    except Exception as e:
+        st.error(f"Gagal membaca file {path}: {e}")
+        return None, None
+
+    df.replace(r"^\s*$", np.nan, regex=True, inplace=True)
     numeric_df = df.applymap(clean_number)
+
     st.dataframe(numeric_df)
 
     preds = {}
@@ -78,6 +102,7 @@ def process_file(file, name):
         preds[col] = pred
 
     overall_pred = predict_next([v for v in preds.values() if not pd.isna(v)])
+
     st.markdown("#### 🔢 Prediksi per Kolom:")
     st.write(preds)
 
@@ -86,23 +111,32 @@ def process_file(file, name):
 
     return preds, overall_pred
 
-# === Upload/Load Data ===
-col1, col2, col3 = st.columns(3)
-with col1:
-    file_a = st.file_uploader("Unggah file A.csv", type=["csv"], key="a")
-with col2:
-    file_b = st.file_uploader("Unggah file B.csv", type=["csv"], key="b")
-with col3:
-    file_c = st.file_uploader("Unggah file C.csv", type=["csv"], key="c")
+# ===============================
+# INPUT: AUTO LOAD ATAU UPLOAD
+# ===============================
+st.sidebar.header("📂 Pengaturan Data")
+auto_load = st.sidebar.checkbox("Gunakan data dari repo (/data/)", value=True)
 
-if file_a:
-    process_file(file_a, "a")
+files_to_use = {}
+for fname in FILES:
+    label = fname.upper()
+    if auto_load:
+        file_path = os.path.join(DATA_PATH, fname)
+        if os.path.exists(file_path):
+            files_to_use[fname] = file_path
+        else:
+            st.warning(f"⚠️ File {fname} tidak ditemukan di {DATA_PATH}/")
+    else:
+        files_to_use[fname] = st.sidebar.file_uploader(f"Upload {fname}", type=["csv"], key=fname)
 
-if file_b:
-    process_file(file_b, "b")
-
-if file_c:
-    process_file(file_c, "c")
+# ===============================
+# PROSES FILE
+# ===============================
+st.markdown("---")
+for fname in FILES:
+    file_source = files_to_use.get(fname)
+    if file_source:
+        process_file(file_source, fname.split(".")[0])
 
 st.markdown("---")
-st.caption("© 2025 — Kombinasi Angka Engine by Ferri & GPT-5")
+st.caption("© 2025 — Kombinasi Angka Engine by Ferri Kusuma & GPT-5")
