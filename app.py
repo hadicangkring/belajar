@@ -1,177 +1,90 @@
-# app.py
-# 📊 Prediksi Kombinasi Angka — versi final (Streamlit)
-# Ferri Kusuma & GPT-5, 2025
-
 import streamlit as st
 import pandas as pd
-import numpy as np
-from datetime import datetime, timezone, timedelta
-import itertools
-import os
-
-# === KONFIGURASI DASAR ===
-st.set_page_config(page_title="Prediksi Kombinasi Angka", layout="wide")
-st.title("🔢 Prediksi Kombinasi Angka — Streamlit Edition")
-
-# === FUNGSI PEMBANTU ===
-
-# Hari dan pasaran otomatis
 from datetime import datetime
+import os
+from collections import defaultdict
 
+# === Konfigurasi dasar ===
+st.set_page_config(page_title="🔢 Prediksi Kombinasi Angka", layout="centered")
+st.title("🔢 Prediksi Kombinasi Angka — Streamlit Edition")
+st.caption("Prediksi otomatis berbasis data historis 6 digit (mengambil 4 digit terakhir).")
+
+# === Fungsi bantu kalender Jawa sederhana ===
 def get_hari_pasaran():
-    # Hari dan pasaran sekarang (otomatis)
-    hari = datetime.now().strftime("%A").lower()
-    hari_map = {
-        "monday": "senin",
-        "tuesday": "selasa",
-        "wednesday": "rabu",
-        "thursday": "kamis",
-        "friday": "jumat",
-        "saturday": "sabtu",
-        "sunday": "minggu"
-    }
+    hari_map = {"Senin":4, "Selasa":3, "Rabu":7, "Kamis":8, "Jumat":6, "Sabtu":9, "Minggu":5}
+    pasaran_list = ["Legi", "Pahing", "Pon", "Wage", "Kliwon"]
+    today = datetime.now()
+    hari = today.strftime("%A")
+    hari = hari.replace("Monday","Senin").replace("Tuesday","Selasa").replace("Wednesday","Rabu") \
+               .replace("Thursday","Kamis").replace("Friday","Jumat").replace("Saturday","Sabtu").replace("Sunday","Minggu")
+    pasaran = pasaran_list[today.toordinal() % 5]
+    neptu = hari_map[hari] + {"Legi":5,"Pahing":9,"Pon":7,"Wage":4,"Kliwon":8}[pasaran]
+    return hari, pasaran, neptu
 
-    hari_id = hari_map.get(hari, "kamis")  # fallback kamis
-
-    pasaran_list = ["legi", "pahing", "pon", "wage", "kliwon"]
-    base_date = datetime(2024, 1, 1)
-    delta_days = (datetime.now() - base_date).days
-    pasaran = pasaran_list[delta_days % 5]
-
-    hari_val_map = {"senin":4, "selasa":3, "rabu":7, "kamis":8, "jumat":6, "sabtu":9, "minggu":5}
-    pasaran_val_map = {"legi":5,"pahing":9,"pon":7,"wage":4,"kliwon":8}
-
-    return hari_id, pasaran, hari_val_map[hari_id], pasaran_val_map[pasaran]
-
-# Angka samaran
-samaran = {
-  0:[1,8], 1:[0,7], 2:[5,6], 3:[8,9], 4:[7,5],
-  5:[2,4], 6:[9,2], 7:[4,1], 8:[3,0], 9:[6,3]
-}
-
-def expand_digit(d):
-    """Kembalikan set angka yang mewakili digit + samaran"""
-    d = int(d)
-    return {d, samaran[d][0], samaran[d][1]}
-
-def prepare_number(x, is_six=False):
-    """Ambil 4 digit terakhir jika 6 digit, isi nol jika kurang"""
-    try:
-        x = str(int(x))
-        if is_six and len(x) >= 6:
-            x = x[-4:]
-        return x.zfill(4)
-    except:
-        return None
-
-def hitung_frekuensi(df, is_six=False):
-    """Hitung frekuensi digit per posisi"""
-    counts = [dict() for _ in range(4)]
-    for val in df.dropna().astype(str):
-        n = prepare_number(val, is_six)
-        if not n:
+# === Hitung frekuensi 4 digit terakhir ===
+def hitung_frekuensi(df):
+    counts = [defaultdict(int) for _ in range(4)]  # [satuan, puluhan, ratusan, ribuan]
+    for val in df.stack():
+        try:
+            s = str(int(val))[-4:]  # ambil 4 digit terakhir
+            for i, d in enumerate(s[::-1]):  # dari satuan ke ribuan
+                counts[i][d] += 1
+        except Exception:
             continue
-        for i, ch in enumerate(n):
-            for ex in expand_digit(ch):
-                counts[i][ex] = counts[i].get(ex, 0) + 1
     return counts
 
-def apply_bobot(counts, hari_val, pasaran_val):
-    """Tambahkan bobot berdasarkan hari/pasaran"""
-    for i in range(4):
-        for d in list(counts[i].keys()):
-            if d == hari_val:
-                counts[i][d] *= 1.1
-            if d == pasaran_val:
-                counts[i][d] *= 1.1
-    return counts
+# === Hitung probabilitas (%)
+def probabilitas(counts):
+    probs = []
+    for pos in counts:
+        total = sum(pos.values())
+        probs.append({k: (v/total*100 if total else 0) for k,v in pos.items()})
+    return probs
 
-def prediksi_top5(counts):
-    """Kombinasikan top 3 per posisi lalu ranking"""
-    posisi_top = [sorted(c.items(), key=lambda x: x[1], reverse=True)[:3] for c in counts]
-    combos = []
-    for ribu, ratu, puluh, satu in itertools.product(*posisi_top):
-        prob = ribu[1]*ratu[1]*puluh[1]*satu[1]
-        combos.append(("{}{}{}{}".format(ribu[0],ratu[0],puluh[0],satu[0]), prob))
-    top5 = sorted(combos, key=lambda x: x[1], reverse=True)[:5]
-    total = sum(p for _,p in top5)
-    return [(c, round(p/total*100,2)) for c,p in top5]
+# === Tampilkan hasil prediksi ===
+def tampilkan_prediksi(nama_file, df):
+    hari, pasaran, neptu = get_hari_pasaran()
+    st.write(f"📅 Hari ini: **{hari} {pasaran} (Neptu {neptu})**")
+    counts = hitung_frekuensi(df)
+    probs = probabilitas(counts)
+    posisi = ["Satuan","Puluhan","Ratusan","Ribuan"]
+    
+    st.write("### 🔍 Frekuensi & Probabilitas")
+    for i, (count, prob) in enumerate(zip(counts, probs)):
+        st.markdown(f"**{posisi[i]}:**")
+        sorted_prob = sorted(prob.items(), key=lambda x:x[1], reverse=True)
+        top5 = sorted_prob[:5]
+        df_top = pd.DataFrame(top5, columns=["Digit","Probabilitas (%)"])
+        st.dataframe(df_top, hide_index=True, use_container_width=True)
 
-def log_hasil(file, top5, hari, pasaran, neptu):
-    """Simpan ke log CSV"""
-    log_file = "prediksi_log.csv"
-    now = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
-    df_log = pd.DataFrame([
-        {"timestamp": now, "file": file, "prediksi": c, "prob": p,
-         "hari": hari, "pasaran": pasaran, "neptu": neptu}
-        for c,p in top5
-    ])
-    if os.path.exists(log_file):
-        old = pd.read_csv(log_file)
-        df_log = pd.concat([old, df_log], ignore_index=True)
-    df_log.to_csv(log_file, index=False)
+    # === Prediksi akhir ===
+    prediksi = "".join(max(p.items(), key=lambda x:x[1])[0] for p in probs[::-1])
+    st.success(f"🎯 Prediksi 4 Digit Terkuat: **{prediksi}**")
 
-def tampilkan_prediksi(nama_file, df, is_six=False):
-    st.subheader(f"📘 File {nama_file.upper()}")
-    hari, pasaran, hari_val, pasar_val = get_hari_pasaran()
-    neptu = hari_val + pasar_val
-    st.caption(f"Hari ini: **{hari.capitalize()} {pasaran.capitalize()} (Neptu {neptu})**")
+    # === Simpan log ===
+    os.makedirs("logs", exist_ok=True)
+    tgl = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = f"logs/log_{nama_file.replace('.csv','')}_{tgl}.txt"
+    with open(log_file, "w") as f:
+        f.write(f"Prediksi file {nama_file}\n")
+        f.write(f"Hari: {hari} {pasaran} (Neptu {neptu})\n")
+        f.write(f"Prediksi 4 digit: {prediksi}\n\n")
+        for i, (count, prob) in enumerate(zip(counts, probs)):
+            f.write(f"[{posisi[i]}]\n")
+            for k,v in sorted(prob.items(), key=lambda x:x[1], reverse=True):
+                f.write(f" {k}: {v:.2f}%\n")
+            f.write("\n")
+    st.caption(f"📁 Log tersimpan di: `{log_file}`")
 
-    # Perhitungan
-    counts = hitung_frekuensi(df.stack(), is_six)
-    counts = apply_bobot(counts, hari_val, pasar_val)
-    top5 = prediksi_top5(counts)
+# === Upload file ===
+st.header("🧮 Jalankan Prediksi")
 
-    # Tampilkan hasil
-    col1, col2 = st.columns([2,1])
-    with col1:
-        st.write("**Top 5 Prediksi:**")
-        for c,p in top5:
-            st.write(f"🔹 {c} → {p}%")
-    with col2:
-        st.metric("Prediksi Utama", top5[0][0], f"{top5[0][1]}%")
-
-    if st.button(f"💾 Simpan Log {nama_file.upper()}"):
-        log_hasil(nama_file, top5, hari, pasaran, neptu)
-        st.success("Disimpan ke prediksi_log.csv")
-
-# === TAMPILAN UTAMA ===
-st.markdown("---")
-st.subheader("🧮 Jalankan Prediksi")
-
-colA, colB, colC = st.columns(3)
-
-with colA:
-    if os.path.exists("a.csv"):
-        df_a = pd.read_csv("a.csv")
-        tampilkan_prediksi("a.csv", df_a, is_six=True)
+for nama_file, keterangan in [("a.csv","📘 File A.CSV"),
+                              ("b.csv","📗 File B.CSV"),
+                              ("c.csv","📙 File C.CSV")]:
+    st.subheader(keterangan)
+    if os.path.exists(nama_file):
+        df = pd.read_csv(nama_file, header=None)
+        tampilkan_prediksi(nama_file, df)
     else:
-        st.warning("File a.csv belum ditemukan.")
-
-with colB:
-    if os.path.exists("b.csv"):
-        df_b = pd.read_csv("b.csv")
-        tampilkan_prediksi("b.csv", df_b, is_six=False)
-    else:
-        st.warning("File b.csv belum ditemukan.")
-
-with colC:
-    if os.path.exists("c.csv"):
-        df_c = pd.read_csv("c.csv")
-        tampilkan_prediksi("c.csv", df_c, is_six=False)
-    else:
-        st.warning("File c.csv belum ditemukan.")
-
-st.markdown("---")
-
-# Tombol prediksi semua sekaligus
-if st.button("🚀 Prediksi Semua Sekaligus"):
-    for nama, df, six in [("a.csv", df_a, True), ("b.csv", df_b, False), ("c.csv", df_c, False)]:
-        if "df_" + nama[0] in locals():
-            hari, pasaran, h_val, p_val = get_hari_pasaran()
-            neptu = h_val + p_val
-            counts = hitung_frekuensi(df.stack(), six)
-            counts = apply_bobot(counts, h_val, p_val)
-            top5 = prediksi_top5(counts)
-            log_hasil(nama, top5, hari, pasaran, neptu)
-    st.success("✅ Semua hasil sudah diprediksi dan disimpan ke log.")
+        st.warning(f"File {nama_file} belum ditemukan.")
