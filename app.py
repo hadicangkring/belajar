@@ -40,35 +40,28 @@ def hitung_frekuensi(df):
         c = Counter(posisi[p])
         total = sum(c.values())
         frek = {k: v for k, v in sorted(c.items(), key=lambda x: (-x[1], x[0]))}
-        hasil[p] = {"angka": list(frek.keys()), "persen": [round((v/total)*100, 1) for v in frek.values()]}
+        hasil[p] = {
+            "angka": list(frek.keys())[:5],
+            "persen": [round((v/total)*100, 1) for v in list(frek.values())[:5]]
+        }
     return hasil
 
-def pad_dicts(frek):
-    """Pastikan semua kolom tabel sama panjang."""
-    maxlen = max(len(frek[p]["angka"]) for p in frek)
-    for p in frek:
-        for k in ["angka", "persen"]:
-            while len(frek[p][k]) < maxlen:
-                frek[p][k].append("-")
-    return frek
-
-def tabel_frekuensi(frek):
-    frek = pad_dicts(frek)
-    tabel = pd.DataFrame({
+def tabel_mendatar(frek):
+    """Tabel mendatar seperti contoh: baris 'angka' dan 'persen'."""
+    df = pd.DataFrame({
         "ribuan": frek["ribuan"]["angka"],
         "ratusan": frek["ratusan"]["angka"],
         "puluhan": frek["puluhan"]["angka"],
         "satuan": frek["satuan"]["angka"]
-    }).head(5)
-    tabel_persen = pd.DataFrame({
-        "ribuan": [f"{x}%" if x != "-" else "-" for x in frek["ribuan"]["persen"]],
-        "ratusan": [f"{x}%" if x != "-" else "-" for x in frek["ratusan"]["persen"]],
-        "puluhan": [f"{x}%" if x != "-" else "-" for x in frek["puluhan"]["persen"]],
-        "satuan": [f"{x}%" if x != "-" else "-" for x in frek["satuan"]["persen"]]
-    }).head(5)
-    tabel.index = [f"angka {i+1}" for i in range(len(tabel))]
-    tabel_persen.index = [f"persen {i+1}" for i in range(len(tabel_persen))]
-    return tabel, tabel_persen
+    }).T
+    df.columns = [f"{i+1}" for i in range(df.shape[1])]
+    df.loc["persen"] = [
+        ", ".join([f"{x:.1f}" for x in frek["ribuan"]["persen"]]),
+        ", ".join([f"{x:.1f}" for x in frek["ratusan"]["persen"]]),
+        ", ".join([f"{x:.1f}" for x in frek["puluhan"]["persen"]]),
+        ", ".join([f"{x:.1f}" for x in frek["satuan"]["persen"]]),
+    ]
+    return df
 
 def kombinasi_terbaik(frek):
     kombinasi = []
@@ -76,15 +69,13 @@ def kombinasi_terbaik(frek):
         for s in frek["ratusan"]["angka"][:5]:
             for p in frek["puluhan"]["angka"][:5]:
                 for u in frek["satuan"]["angka"][:5]:
-                    if "-" in [r, s, p, u]:
-                        continue
                     prob = (
                         frek["ribuan"]["persen"][frek["ribuan"]["angka"].index(r)] *
                         frek["ratusan"]["persen"][frek["ratusan"]["angka"].index(s)] *
                         frek["puluhan"]["persen"][frek["puluhan"]["angka"].index(p)] *
                         frek["satuan"]["persen"][frek["satuan"]["angka"].index(u)]
                     )
-                    kombinasi.append((f"{r}{s}{p}{u}", round(prob / 10000, 4)))  # Normalisasi biar rapi
+                    kombinasi.append((f"{r}{s}{p}{u}", round(prob / 10000, 4)))
     kombinasi = sorted(kombinasi, key=lambda x: -x[1])[:5]
     return pd.DataFrame(kombinasi, columns=["Kombinasi", "Bobot (%)"])
 
@@ -105,11 +96,10 @@ def tampilkan_prediksi(namafile, df):
     st.write(f"Angka terakhir sebelum prediksi adalah: **{terakhir}**")
 
     frek = hitung_frekuensi(df)
-    tabel, tabel_persen = tabel_frekuensi(frek)
+    tabel = tabel_mendatar(frek)
 
-    st.subheader("📊 Frekuensi Angka per Posisi")
+    st.subheader("📊 Frekuensi & Probabilitas (Mendatar)")
     st.dataframe(tabel, use_container_width=True)
-    st.dataframe(tabel_persen, use_container_width=True)
 
     st.subheader("🎯 Prediksi Kombinasi Teratas")
     st.dataframe(kombinasi_terbaik(frek), use_container_width=True)
