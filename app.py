@@ -1,117 +1,79 @@
 # app.py
 import streamlit as st
 import pandas as pd
-from collections import defaultdict, Counter
-
-st.set_page_config(page_title="🔢 Prediksi Kombinasi Angka — Streamlit Edition", layout="centered")
-st.title("🔢 Prediksi Kombinasi Angka — Streamlit Edition")
-st.caption("Prediksi otomatis berbasis data historis 6 digit (mengambil 4 digit terakhir).")
-
-st.write("📅 Hari ini:", pd.Timestamp.now().strftime("%A %d-%m-%Y"))
-st.divider()
+from collections import Counter, defaultdict
+from datetime import datetime
 
 # === Fungsi bantu ===
-def pad4(x: int) -> str:
-    """Pastikan jadi 4 digit"""
-    return str(int(x)).zfill(4)
+def ambil_4digit_dan_2digit(nilai):
+    """Ambil 4 digit terakhir dan 2 digit terakhir dari kolom angka"""
+    nilai_str = str(int(nilai)).zfill(6)  # pastikan panjang 6 digit
+    return nilai_str[-4:], nilai_str[-2:]
 
-def ambil_angka_terakhir(df):
-    """Cari angka terakhir valid (paling kanan dan paling bawah yang bukan kosong)."""
-    # Balikkan urutan baris agar mulai dari bawah
-    for _, row in reversed(list(df.iterrows())):
-        # Periksa dari kolom paling kanan ke kiri
-        for val in reversed(row):
-            s = str(val).strip()
-            if s.isdigit():
-                return s.zfill(6)  # pastikan 6 digit
-    return "000000"
+def siapkan_data(df):
+    """Pastikan data bersih dan siap diproses"""
+    df = df.dropna()
+    df = df[df.iloc[:, 0].astype(str).str.isdigit()]
+    df["angka"] = df.iloc[:, 0].astype(int)
+    df["4digit"], df["2digit"] = zip(*df["angka"].apply(ambil_4digit_dan_2digit))
+    return df
 
-# === Model Markov Ordo 2 ===
-def markov_ordo2(data, alpha=0.5):
-    """Bangun model Markov ordo 2"""
-    transisi = defaultdict(Counter)
-    for i in range(len(data) - 2):
-        prev2 = (data[i], data[i + 1])
-        next_val = data[i + 2]
-        transisi[prev2][next_val] += 1
-    return transisi
+def hitung_prediksi(data, kolom, alpha=0.5):
+    """Hitung prediksi probabilistik dengan exponential smoothing"""
+    counter = Counter()
+    bobot = 1.0
+    total = 0.0
 
-def prediksi_markov(transisi, last2, alpha=0.5, top_n=5):
-    """Prediksi kombinasi 4 digit dan 2 digit"""
-    counter = transisi.get(last2, Counter())
-    total = sum(counter.values()) + alpha * len(counter)
-    hasil = {k: (v + alpha) / total for k, v in counter.items()}
-    urut = sorted(hasil.items(), key=lambda x: x[1], reverse=True)[:top_n]
-    df4 = pd.DataFrame([{"Kombinasi 4 Digit": k, "Bobot": f"{p:.3f}"} for k, p in urut])
-    df2 = pd.DataFrame([{"2 Digit": k[-2:], "Bobot": f"{p:.3f}"} for k, p in urut])
-    return df4, df2
+    for nilai in reversed(data[kolom].tolist()):
+        counter[nilai] += bobot
+        total += bobot
+        bobot *= alpha
 
-# === Tampilan Tabel ===
-def tabel_mendatar(df):
-    df = df.reset_index(drop=True)
-    df.index = [f"Top {i+1}" for i in range(len(df))]
-    return df.T
+    hasil = {k: v / total for k, v in counter.items()}
+    return sorted(hasil.items(), key=lambda x: x[1], reverse=True)[:10]
 
-# === Tampilan Prediksi ===
-def tampilkan_prediksi(file_name, judul, icon, alpha):
-    st.subheader(f"{icon} {judul}")
-
+def tampilkan_prediksi(file, label, icon, alpha):
+    """Tampilkan hasil prediksi dari file CSV"""
     try:
-        df = pd.read_csv(file_name)
+        df = pd.read_csv(file)
+        data = siapkan_data(df)
+
+        st.subheader(f"{icon} {label}")
+        st.caption(f"Total data: {len(data)} baris")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**Top 10 – 4 Digit Terakhir**")
+            pred_4 = hitung_prediksi(data, "4digit", alpha)
+            for angka, prob in pred_4:
+                st.write(f"{angka} — {prob*100:.2f}%")
+
+        with col2:
+            st.markdown("**Top 10 – 2 Digit Terakhir**")
+            pred_2 = hitung_prediksi(data, "2digit", alpha)
+            for angka, prob in pred_2:
+                st.write(f"{angka} — {prob*100:.2f}%")
+
+        # Angka terakhir (paling kanan dari data terakhir)
+        angka_terakhir = str(data.iloc[-1]["angka"]).zfill(6)[-1]
+        st.info(f"🔚 **Angka terakhir (kanan): {angka_terakhir}**")
+
     except Exception as e:
-        st.error(f"Gagal membaca {file_name}: {e}")
-        return
+        st.error(f"Gagal memproses {file}: {e}")
 
-    data = siapkan_data(df)
-    if len(data) < 3:
-        st.warning("Data terlalu sedikit untuk membentuk model.")
-        return
+# === UI Streamlit ===
+st.set_page_config(page_title="Prediksi Kombinasi Angka", layout="centered")
 
-    angka_terakhir = ambil_angka_terakhir(df)
-    last2 = (data[-2], data[-1])
+st.title("🔢 Prediksi Kombinasi Angka — Streamlit Edition")
+st.write("Prediksi otomatis berbasis data historis 6 digit (mengambil 4 digit terakhir dan 2 digit terakhir).")
 
-    st.write(f"Angka terakhir sebelum prediksi adalah: **{angka_terakhir}**")
+st.markdown(f"📅 Hari ini: **{datetime.now().strftime('%A %d-%m-%Y')}**")
 
-    transisi = markov_ordo2(data, alpha)
-    df4, df2 = prediksi_markov(transisi, last2, alpha)
-
-    st.markdown("**Prediksi 4 Digit (Top 5):**")
-    st.dataframe(tabel_mendatar(df4), use_container_width=True)
-
-    st.markdown("**Prediksi 2 Digit (Top 5):**")
-    st.dataframe(tabel_mendatar(df2), use_container_width=True)
-
-# === Kontrol UI ===
+# Kontrol Alpha
 st.sidebar.header("⚙️ Pengaturan Prediksi")
-alpha = st.sidebar.slider("Nilai Alpha (Smoothing)", 0.0, 1.0, 0.5, 0.05)
+alpha = st.sidebar.slider("Nilai Alpha (Smoothing)", 0.00, 1.00, 0.5, 0.05)
 
-if st.button("🔮 Jalankan Prediksi"):
-    tampilkan_prediksi("a.csv", "File A", "📘", alpha)
-    st.divider()
-    tampilkan_prediksi("b.csv", "File B", "📗", alpha)
-    st.divider()
-    tampilkan_prediksi("c.csv", "File C", "📙", alpha)
-
-    # === Gabungan ===
-    st.divider()
-    st.subheader("🧩 Gabungan Semua Data")
-    try:
-        df_a = pd.read_csv("a.csv")
-        df_b = pd.read_csv("b.csv")
-        df_c = pd.read_csv("c.csv")
-        df_all = pd.concat([df_a, df_b, df_c], ignore_index=True)
-        data_all = siapkan_data(df_all)
-        if len(data_all) >= 3:
-            angka_terakhir_all = ambil_angka_terakhir(df_all)
-            last2_all = (data_all[-2], data_all[-1])
-            st.write(f"Angka terakhir sebelum prediksi gabungan: **{angka_terakhir_all}**")
-            transisi_all = markov_ordo2(data_all, alpha)
-            df4_all, df2_all = prediksi_markov(transisi_all, last2_all, alpha)
-            st.markdown("**Prediksi 4 Digit (Top 5 Gabungan):**")
-            st.dataframe(tabel_mendatar(df4_all), use_container_width=True)
-            st.markdown("**Prediksi 2 Digit (Top 5 Gabungan):**")
-            st.dataframe(tabel_mendatar(df2_all), use_container_width=True)
-        else:
-            st.warning("Data gabungan masih terlalu sedikit.")
-    except Exception as e:
-        st.error(f"Gagal membaca data gabungan: {e}")
+# Jalankan prediksi untuk dua file
+tampilkan_prediksi("a.csv", "File A", "📘", alpha)
+tampilkan_prediksi("b.csv", "File B", "📗", alpha)
