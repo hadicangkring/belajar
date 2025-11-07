@@ -47,20 +47,28 @@ def hitung_frekuensi(df):
     return hasil
 
 def tabel_mendatar(frek):
-    """Tabel mendatar seperti contoh: baris 'angka' dan 'persen'."""
-    df = pd.DataFrame({
-        "ribuan": frek["ribuan"]["angka"],
-        "ratusan": frek["ratusan"]["angka"],
-        "puluhan": frek["puluhan"]["angka"],
-        "satuan": frek["satuan"]["angka"]
-    }).T
-    df.columns = [f"{i+1}" for i in range(df.shape[1])]
-    df.loc["persen"] = [
-        ", ".join([f"{x:.1f}" for x in frek["ribuan"]["persen"]]),
-        ", ".join([f"{x:.1f}" for x in frek["ratusan"]["persen"]]),
-        ", ".join([f"{x:.1f}" for x in frek["puluhan"]["persen"]]),
-        ", ".join([f"{x:.1f}" for x in frek["satuan"]["persen"]]),
-    ]
+    posisi = ["ribuan", "ratusan", "puluhan", "satuan"]
+    data = {}
+
+    for pos in posisi:
+        angka = frek[pos]["angka"]
+        persen = frek[pos]["persen"]
+
+        # Pastikan selalu 4 kolom, isi "-" kalau kurang
+        angka = angka + ["-"] * (4 - len(angka))
+        persen = persen + ["-"] * (4 - len(persen))
+
+        data[pos] = angka
+        data[pos + "_persen"] = persen
+
+    df = pd.DataFrame(data, index=[1, 2, 3, 4])
+
+    # Tambahkan baris "persen" dengan isi dari kolom *_persen
+    persen_row = [data[p + "_persen"][0] for p in posisi]
+    df.loc["persen"] = persen_row + ["-"] * (len(df.columns) - len(posisi))
+
+    # Hilangkan kolom *_persen agar tabel mendatar rapi
+    df = df[posisi]
     return df
 
 def kombinasi_terbaik(frek):
