@@ -1,121 +1,126 @@
+# app.py
 import streamlit as st
 import pandas as pd
+from collections import Counter, defaultdict
 from datetime import datetime
 import os
-from collections import defaultdict
 
-# === Konfigurasi dasar ===
-st.set_page_config(page_title="🔢 Prediksi Kombinasi Angka", layout="centered")
+# === KONFIGURASI DASAR ===
+st.set_page_config(page_title="🔢 Prediksi Kombinasi Angka — Streamlit Edition", layout="centered")
 st.title("🔢 Prediksi Kombinasi Angka — Streamlit Edition")
 st.caption("Prediksi otomatis berbasis data historis 6 digit (mengambil 4 digit terakhir).")
 
-# === Fungsi bantu kalender Jawa sederhana ===
-def get_hari_pasaran():
-    hari_map = {"Senin":4, "Selasa":3, "Rabu":7, "Kamis":8, "Jumat":6, "Sabtu":9, "Minggu":5}
-    pasaran_list = ["Legi", "Pahing", "Pon", "Wage", "Kliwon"]
-    today = datetime.now()
-    hari = today.strftime("%A")
-    hari = hari.replace("Monday","Senin").replace("Tuesday","Selasa").replace("Wednesday","Rabu") \
-               .replace("Thursday","Kamis").replace("Friday","Jumat").replace("Saturday","Sabtu").replace("Sunday","Minggu")
-    pasaran = pasaran_list[today.toordinal() % 5]
-    neptu = hari_map[hari] + {"Legi":5,"Pahing":9,"Pon":7,"Wage":4,"Kliwon":8}[pasaran]
-    return hari, pasaran, neptu
+# === DAFTAR FILE CSV ===
+FILES = {
+    "📘 File A": "a.csv",
+    "📗 File B": "b.csv",
+    "📙 File C": "c.csv"
+}
 
-# === Hitung frekuensi 4 digit terakhir ===
+# === Fungsi bantu ===
+def baca_data(namafile):
+    """Baca CSV dan ambil 6 digit terakhir, keluarkan juga 4 digit terakhir untuk prediksi."""
+    df = pd.read_csv(namafile, header=None)
+    df = df.dropna()
+    df[0] = df[0].astype(str).str.replace(r'\D', '', regex=True)
+    df = df[df[0].str.len() >= 4]
+    df["6digit"] = df[0].str[-6:]
+    df["4digit"] = df["6digit"].str[-4:]
+    return df
+
 def hitung_frekuensi(df):
-    counts = [defaultdict(int) for _ in range(4)]  # [satuan, puluhan, ratusan, ribuan]
-    for val in df.stack():
-        try:
-            s = str(int(val))[-4:]  # ambil 4 digit terakhir
-            for i, d in enumerate(s[::-1]):  # dari satuan ke ribuan
-                counts[i][d] += 1
-        except Exception:
-            continue
-    return counts
+    """Hitung frekuensi tiap digit berdasarkan posisi (ribu, ratus, puluh, satu)."""
+    posisi = defaultdict(list)
+    for val in df["4digit"]:
+        if len(val) == 4:
+            posisi["ribuan"].append(val[0])
+            posisi["ratusan"].append(val[1])
+            posisi["puluhan"].append(val[2])
+            posisi["satuan"].append(val[3])
 
-# === Hitung probabilitas (%)
-def probabilitas(counts):
-    probs = []
-    for pos in counts:
-        total = sum(pos.values())
-        probs.append({k: (v/total*100 if total else 0) for k,v in pos.items()})
-    return probs
+    hasil = {}
+    for p in posisi:
+        c = Counter(posisi[p])
+        total = sum(c.values())
+        frek = {k: v for k, v in sorted(c.items(), key=lambda x: (-x[1], x[0]))}
+        hasil[p] = {"angka": list(frek.keys()), "persen": [round((v/total)*100, 1) for v in frek.values()]}
+    return hasil
 
-# === Tampilkan hasil prediksi ===
-def tampilkan_prediksi(nama_file, df):
-    hari, pasaran, neptu = get_hari_pasaran()
-    st.write(f"📅 Hari ini: **{hari} {pasaran} (Neptu {neptu})**")
+def tabel_frekuensi(frek):
+    """Buat tabel ringkas (angka dan persen) untuk setiap posisi."""
+    tabel = pd.DataFrame({
+        "ribuan": frek["ribuan"]["angka"],
+        "ratusan": frek["ratusan"]["angka"],
+        "puluhan": frek["puluhan"]["angka"],
+        "satuan": frek["satuan"]["angka"]
+    }).head(5)
+    tabel_persen = pd.DataFrame({
+        "ribuan": frek["ribuan"]["persen"],
+        "ratusan": frek["ratusan"]["persen"],
+        "puluhan": frek["puluhan"]["persen"],
+        "satuan": frek["satuan"]["persen"]
+    }).head(5)
+    tabel_persen = tabel_persen.applymap(lambda x: f"{x}%" if pd.notnull(x) else "-")
+    tabel.index = [f"angka {i+1}" for i in range(len(tabel))]
+    tabel_persen.index = [f"persen {i+1}" for i in range(len(tabel_persen))]
+    return tabel, tabel_persen
 
-    # Ambil angka terakhir sebelum prediksi (aman dari error)
-    last_number = None
-    try:
-        flat_values = list(df.stack().values)
-        for val in reversed(flat_values):
-            if pd.notna(val):
-                s = str(int(val))[-4:]
-                last_number = s
-                break
-    except Exception:
-        last_number = None
+def kombinasi_terbaik(frek):
+    """Ambil 5 kombinasi teratas dengan probabilitas tertinggi."""
+    kombinasi = []
+    for r in frek["ribuan"]["angka"][:5]:
+        for s in frek["ratusan"]["angka"][:5]:
+            for p in frek["puluhan"]["angka"][:5]:
+                for u in frek["satuan"]["angka"][:5]:
+                    prob = (
+                        frek["ribuan"]["persen"][frek["ribuan"]["angka"].index(r)] *
+                        frek["ratusan"]["persen"][frek["ratusan"]["angka"].index(s)] *
+                        frek["puluhan"]["persen"][frek["puluhan"]["angka"].index(p)] *
+                        frek["satuan"]["persen"][frek["satuan"]["angka"].index(u)]
+                    )
+                    kombinasi.append((f"{r}{s}{p}{u}", prob))
+    kombinasi = sorted(kombinasi, key=lambda x: -x[1])[:5]
+    return pd.DataFrame(kombinasi, columns=["Kombinasi", "Bobot (%)"])
 
-    if last_number:
-        st.subheader(f"{nama_file} (angka terakhir sebelum prediksi: {last_number})")
+def angka_dominan(df):
+    """Ambil 10 digit paling sering muncul dari seluruh 6 digit."""
+    semua = "".join(df["6digit"].dropna().astype(str))
+    hitung = Counter(semua)
+    dominan = sorted(hitung.items(), key=lambda x: (-x[1], x[0]))[:10]
+    return pd.DataFrame(dominan, columns=["Angka", "Frekuensi"])
+
+# === FUNGSI TAMPILKAN PREDIKSI ===
+def tampilkan_prediksi(namafile, df):
+    st.markdown(f"### {namafile}")
+    if df.empty:
+        st.warning("Data kosong atau tidak valid.")
+        return
+
+    # Ambil angka terakhir
+    terakhir = df["6digit"].iloc[-1]
+    st.write(f"Angka terakhir sebelum prediksi adalah: **{terakhir}**")
+
+    frek = hitung_frekuensi(df)
+    tabel, tabel_persen = tabel_frekuensi(frek)
+
+    st.subheader("📊 Frekuensi Angka per Posisi")
+    st.dataframe(tabel, use_container_width=True)
+    st.dataframe(tabel_persen, use_container_width=True)
+
+    st.subheader("🎯 Prediksi Kombinasi Teratas")
+    st.dataframe(kombinasi_terbaik(frek), use_container_width=True)
+
+    st.subheader("🔥 Angka Dominan (Top-10)")
+    st.dataframe(angka_dominan(df), use_container_width=True)
+
+# === MAIN ===
+hari = datetime.now().strftime("%A %d-%m-%Y")
+st.info(f"📅 Hari ini: {hari}")
+
+# === PROSES SETIAP FILE ===
+for nama, file in FILES.items():
+    if os.path.exists(file):
+        df = baca_data(file)
+        tampilkan_prediksi(nama, df)
     else:
-        st.subheader(f"{nama_file} (angka terakhir tidak diketahui)")
-
-    counts = hitung_frekuensi(df)
-    probs = probabilitas(counts)
-    posisi = ["Ribuan", "Ratusan", "Puluhan", "Satuan"]
-
-    # === Buat tabel horizontal (ribuan ke satuan)
-    data = []
-    angka_dominan = []
-    for i in range(3, -1, -1):  # urutan ribuan ke satuan
-        pos = posisi[3 - i]
-        sorted_prob = sorted(probs[i].items(), key=lambda x:x[1], reverse=True)
-        top5 = sorted_prob[:5]
-        if top5:
-            angka_dominan.append(top5[0][0])
-        row = {
-            "Posisi": pos,
-            "Digit": ", ".join(k for k,_ in top5),
-            "Probabilitas (%)": ", ".join(f"{v:.1f}" for _,v in top5)
-        }
-        data.append(row)
-
-    df_show = pd.DataFrame(data)
-    st.dataframe(df_show.style.set_properties(**{
-        "text-align": "center",
-        "background-color": "#EAF4FF",
-    }).set_table_styles([{"selector":"th", "props":[("font-weight","bold"),("background-color","#D6E9FF")]}]),
-    use_container_width=True, hide_index=True)
-
-    # === Prediksi akhir ===
-    prediksi = "".join(angka_dominan)
-    st.success(f"🎯 Prediksi 4 Digit Terkuat: **{prediksi}**")
-    st.markdown(f"**🔢 Angka Dominan:** {'–'.join(angka_dominan)}")
-
-    # === Simpan log ===
-    os.makedirs("logs", exist_ok=True)
-    tgl = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = f"logs/log_{nama_file.replace('.csv','')}_{tgl}.txt"
-    with open(log_file, "w") as f:
-        f.write(f"Prediksi file {nama_file}\n")
-        f.write(f"Hari: {hari} {pasaran} (Neptu {neptu})\n")
-        f.write(f"Angka terakhir sebelum prediksi: {last_number}\n")
-        f.write(f"Prediksi 4 digit: {prediksi}\n\n")
-        for r in data:
-            f.write(f"{r['Posisi']}: {r['Digit']} ({r['Probabilitas (%)']}%)\n")
-        f.write(f"\nAngka Dominan: {'-'.join(angka_dominan)}")
-    st.caption(f"📁 Log tersimpan di: `{log_file}`")
-
-# === Jalankan untuk tiga file tetap ===
-st.header("🧮 Jalankan Prediksi")
-for nama_file, keterangan in [("a.csv","📘 File A.CSV"),
-                              ("b.csv","📗 File B.CSV"),
-                              ("c.csv","📙 File C.CSV")]:
-    if os.path.exists(nama_file):
-        df = pd.read_csv(nama_file, header=None)
-        tampilkan_prediksi(keterangan, df)
-    else:
-        st.warning(f"File {nama_file} belum ditemukan.")
+        st.error(f"File {file} tidak ditemukan.")
