@@ -46,14 +46,18 @@ def tampilkan_prediksi(nama_file, df):
     hari, pasaran, neptu = get_hari_pasaran()
     st.write(f"📅 Hari ini: **{hari} {pasaran} (Neptu {neptu})**")
 
-    # Ambil angka terakhir sebelum prediksi
+    # Ambil angka terakhir sebelum prediksi (aman dari error)
     last_number = None
-    for val in reversed(df.stack()):
-        try:
-            last_number = str(int(val))[-4:]
-            break
-        except Exception:
-            continue
+    try:
+        flat_values = list(df.stack().values)
+        for val in reversed(flat_values):
+            if pd.notna(val):
+                s = str(int(val))[-4:]
+                last_number = s
+                break
+    except Exception:
+        last_number = None
+
     if last_number:
         st.subheader(f"{nama_file} (angka terakhir sebelum prediksi: {last_number})")
     else:
@@ -63,7 +67,7 @@ def tampilkan_prediksi(nama_file, df):
     probs = probabilitas(counts)
     posisi = ["Ribuan", "Ratusan", "Puluhan", "Satuan"]
 
-    # === Buat tabel horizontal
+    # === Buat tabel horizontal (ribuan ke satuan)
     data = []
     angka_dominan = []
     for i in range(3, -1, -1):  # urutan ribuan ke satuan
@@ -104,7 +108,6 @@ def tampilkan_prediksi(nama_file, df):
             f.write(f"{r['Posisi']}: {r['Digit']} ({r['Probabilitas (%)']}%)\n")
         f.write(f"\nAngka Dominan: {'-'.join(angka_dominan)}")
     st.caption(f"📁 Log tersimpan di: `{log_file}`")
-
 
 # === Jalankan untuk tiga file tetap ===
 st.header("🧮 Jalankan Prediksi")
