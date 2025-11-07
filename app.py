@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 from collections import defaultdict
 import itertools
+import numpy as np
 
 # === Konfigurasi dasar ===
 st.set_page_config(page_title="🔢 Prediksi Kombinasi Angka", layout="centered")
@@ -44,7 +45,6 @@ def probabilitas(counts):
 
 # === Kombinasi Top-5 Prediksi Gabungan ===
 def top5_kombinasi(probs):
-    # ambil top 3 per posisi biar tidak terlalu berat
     top_per_pos = [sorted(p.items(), key=lambda x:x[1], reverse=True)[:3] for p in probs]
     kombinasi = []
     for rib, rat, pul, sat in itertools.product(top_per_pos[3], top_per_pos[2], top_per_pos[1], top_per_pos[0]):
@@ -53,6 +53,26 @@ def top5_kombinasi(probs):
     kombinasi.sort(key=lambda x: x[1], reverse=True)
     return kombinasi[:5]
 
+# === Ambil angka terakhir valid dari dataframe ===
+def ambil_angka_terakhir(df):
+    # Flatten semua isi dataframe jadi 1 list
+    semua_nilai = df.replace('', np.nan).stack().dropna().tolist()
+    if not semua_nilai:
+        return "Tidak diketahui"
+    try:
+        # Ambil nilai terakhir yang valid
+        val = str(semua_nilai[-1]).strip()
+        # Ambil 4 digit terakhir, tetap tampilkan nol di depan jika ada
+        val = ''.join([c for c in val if c.isdigit()])
+        if len(val) >= 4:
+            return val[-4:]
+        elif len(val) > 0:
+            return val.zfill(4)
+        else:
+            return "Tidak diketahui"
+    except Exception:
+        return "Tidak diketahui"
+
 # === Tampilkan hasil prediksi ===
 def tampilkan_prediksi(nama_file, df):
     hari, pasaran, neptu = get_hari_pasaran()
@@ -60,14 +80,8 @@ def tampilkan_prediksi(nama_file, df):
     probs = probabilitas(counts)
     posisi = ["Satuan","Puluhan","Ratusan","Ribuan"]
 
-    # Ambil angka terakhir (4 digit)
-    try:
-        angka_terakhir = str(int(df.iloc[-1].dropna().values[-1]))[-4:]
-    except Exception:
-        angka_terakhir = "Tidak diketahui"
-
+    angka_terakhir = ambil_angka_terakhir(df)
     st.subheader(f"{nama_file}  (angka terakhir sebelum prediksi: **{angka_terakhir}**)")
-
     st.write(f"📅 Hari ini: **{hari} {pasaran} (Neptu {neptu})**")
 
     # === Tabel ringkas probabilitas ===
@@ -89,7 +103,7 @@ def tampilkan_prediksi(nama_file, df):
     prediksi = "".join(max(p.items(), key=lambda x:x[1])[0] for p in probs[::-1])
     st.success(f"🎯 Prediksi 4 Digit Terkuat: **{prediksi}**")
 
-    # === Tambahan: Top-5 kombinasi prediksi gabungan ===
+    # === Tambahan: Top-5 Kombinasi Prediksi Gabungan ===
     st.write("### 🔢 Top-5 Kombinasi Prediksi Gabungan")
     top5 = top5_kombinasi(probs)
     df_top5 = pd.DataFrame(top5, columns=["Kombinasi", "Skor Perkalian Probabilitas"])
