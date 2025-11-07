@@ -16,24 +16,15 @@ def pad4(x: int) -> str:
     return str(int(x)).zfill(4)
 
 def ambil_angka_terakhir(df):
-    """Ambil angka terakhir di baris paling bawah kolom paling kanan"""
-    val = df.iloc[-1, -1]
-    try:
-        return pad4(val)
-    except:
-        return "0000"
-
-def siapkan_data(df):
-    """Ambil 4 digit terakhir dari tiap angka"""
-    data = []
-    for col in df.columns:
-        for val in df[col]:
-            try:
-                v = pad4(str(val)[-4:])
-                data.append(v)
-            except:
-                continue
-    return data
+    """Cari angka terakhir valid (paling kanan dan paling bawah yang bukan kosong)."""
+    # Balikkan urutan baris agar mulai dari bawah
+    for _, row in reversed(list(df.iterrows())):
+        # Periksa dari kolom paling kanan ke kiri
+        for val in reversed(row):
+            s = str(val).strip()
+            if s.isdigit():
+                return s.zfill(6)  # pastikan 6 digit
+    return "000000"
 
 # === Model Markov Ordo 2 ===
 def markov_ordo2(data, alpha=0.5):
