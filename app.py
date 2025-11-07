@@ -51,22 +51,24 @@ def tabel_mendatar(frek):
     data = {}
 
     for pos in posisi:
-        # Ambil data jika ada, kalau tidak ada isi kosong
-        if pos in frek and "angka" in frek[pos]:
-            angka = frek[pos]["angka"]
-            persen = frek[pos]["persen"]
-        else:
-            angka = []
-            persen = []
+        # Ambil list angka & persen, pastikan selalu list
+        angka = frek.get(pos, {}).get("angka", [])
+        persen = frek.get(pos, {}).get("persen", [])
 
-        # Pastikan panjangnya 4, isi "-" kalau kurang
-        angka = angka + ["-"] * (4 - len(angka))
-        persen = persen + ["-"] * (4 - len(persen))
+        # Jika bukan list (misal string tunggal), ubah jadi list
+        if not isinstance(angka, list):
+            angka = [angka]
+        if not isinstance(persen, list):
+            persen = [persen]
+
+        # Pastikan panjang minimal 4
+        angka = (angka + ["-"] * 4)[:4]
+        persen = (persen + ["-"] * 4)[:4]
 
         data[pos] = angka
         data[pos + "_persen"] = persen
 
-    # Buat DataFrame dengan panjang seragam
+    # Semua sudah seragam 4 elemen
     df = pd.DataFrame({
         "ribuan": data["ribuan"],
         "ratusan": data["ratusan"],
@@ -74,7 +76,7 @@ def tabel_mendatar(frek):
         "satuan": data["satuan"]
     }, index=[1, 2, 3, 4])
 
-    # Tambahkan baris persen
+    # Tambahkan baris persen gabungan (baris ke-5)
     df.loc["persen"] = [
         data["ribuan_persen"][0],
         data["ratusan_persen"][0],
