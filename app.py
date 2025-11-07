@@ -51,24 +51,37 @@ def tabel_mendatar(frek):
     data = {}
 
     for pos in posisi:
-        angka = frek[pos]["angka"]
-        persen = frek[pos]["persen"]
+        # Ambil data jika ada, kalau tidak ada isi kosong
+        if pos in frek and "angka" in frek[pos]:
+            angka = frek[pos]["angka"]
+            persen = frek[pos]["persen"]
+        else:
+            angka = []
+            persen = []
 
-        # Pastikan selalu 4 kolom, isi "-" kalau kurang
+        # Pastikan panjangnya 4, isi "-" kalau kurang
         angka = angka + ["-"] * (4 - len(angka))
         persen = persen + ["-"] * (4 - len(persen))
 
         data[pos] = angka
         data[pos + "_persen"] = persen
 
-    df = pd.DataFrame(data, index=[1, 2, 3, 4])
+    # Buat DataFrame dengan panjang seragam
+    df = pd.DataFrame({
+        "ribuan": data["ribuan"],
+        "ratusan": data["ratusan"],
+        "puluhan": data["puluhan"],
+        "satuan": data["satuan"]
+    }, index=[1, 2, 3, 4])
 
-    # Tambahkan baris "persen" dengan isi dari kolom *_persen
-    persen_row = [data[p + "_persen"][0] for p in posisi]
-    df.loc["persen"] = persen_row + ["-"] * (len(df.columns) - len(posisi))
+    # Tambahkan baris persen
+    df.loc["persen"] = [
+        data["ribuan_persen"][0],
+        data["ratusan_persen"][0],
+        data["puluhan_persen"][0],
+        data["satuan_persen"][0]
+    ]
 
-    # Hilangkan kolom *_persen agar tabel mendatar rapi
-    df = df[posisi]
     return df
 
 def kombinasi_terbaik(frek):
