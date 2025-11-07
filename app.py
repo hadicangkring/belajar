@@ -10,7 +10,6 @@ st.set_page_config(page_title="🔢 Prediksi Kombinasi Angka — Streamlit Editi
 st.title("🔢 Prediksi Kombinasi Angka — Streamlit Edition")
 st.caption("Prediksi otomatis berbasis data historis 6 digit (mengambil 4 digit terakhir).")
 
-# === DAFTAR FILE CSV ===
 FILES = {
     "📘 File A": "a.csv",
     "📗 File B": "b.csv",
@@ -19,7 +18,6 @@ FILES = {
 
 # === Fungsi bantu ===
 def baca_data(namafile):
-    """Baca CSV dan ambil 6 digit terakhir, keluarkan juga 4 digit terakhir untuk prediksi."""
     df = pd.read_csv(namafile, header=None)
     df = df.dropna()
     df[0] = df[0].astype(str).str.replace(r'\D', '', regex=True)
@@ -29,7 +27,6 @@ def baca_data(namafile):
     return df
 
 def hitung_frekuensi(df):
-    """Hitung frekuensi tiap digit berdasarkan posisi (ribu, ratus, puluh, satu)."""
     posisi = defaultdict(list)
     for val in df["4digit"]:
         if len(val) == 4:
@@ -46,8 +43,17 @@ def hitung_frekuensi(df):
         hasil[p] = {"angka": list(frek.keys()), "persen": [round((v/total)*100, 1) for v in frek.values()]}
     return hasil
 
+def pad_dicts(frek):
+    """Pastikan semua kolom tabel sama panjang."""
+    maxlen = max(len(frek[p]["angka"]) for p in frek)
+    for p in frek:
+        for k in ["angka", "persen"]:
+            while len(frek[p][k]) < maxlen:
+                frek[p][k].append("-")
+    return frek
+
 def tabel_frekuensi(frek):
-    """Buat tabel ringkas (angka dan persen) untuk setiap posisi."""
+    frek = pad_dicts(frek)
     tabel = pd.DataFrame({
         "ribuan": frek["ribuan"]["angka"],
         "ratusan": frek["ratusan"]["angka"],
@@ -55,48 +61,46 @@ def tabel_frekuensi(frek):
         "satuan": frek["satuan"]["angka"]
     }).head(5)
     tabel_persen = pd.DataFrame({
-        "ribuan": frek["ribuan"]["persen"],
-        "ratusan": frek["ratusan"]["persen"],
-        "puluhan": frek["puluhan"]["persen"],
-        "satuan": frek["satuan"]["persen"]
+        "ribuan": [f"{x}%" if x != "-" else "-" for x in frek["ribuan"]["persen"]],
+        "ratusan": [f"{x}%" if x != "-" else "-" for x in frek["ratusan"]["persen"]],
+        "puluhan": [f"{x}%" if x != "-" else "-" for x in frek["puluhan"]["persen"]],
+        "satuan": [f"{x}%" if x != "-" else "-" for x in frek["satuan"]["persen"]]
     }).head(5)
-    tabel_persen = tabel_persen.applymap(lambda x: f"{x}%" if pd.notnull(x) else "-")
     tabel.index = [f"angka {i+1}" for i in range(len(tabel))]
     tabel_persen.index = [f"persen {i+1}" for i in range(len(tabel_persen))]
     return tabel, tabel_persen
 
 def kombinasi_terbaik(frek):
-    """Ambil 5 kombinasi teratas dengan probabilitas tertinggi."""
     kombinasi = []
     for r in frek["ribuan"]["angka"][:5]:
         for s in frek["ratusan"]["angka"][:5]:
             for p in frek["puluhan"]["angka"][:5]:
                 for u in frek["satuan"]["angka"][:5]:
+                    if "-" in [r, s, p, u]:
+                        continue
                     prob = (
                         frek["ribuan"]["persen"][frek["ribuan"]["angka"].index(r)] *
                         frek["ratusan"]["persen"][frek["ratusan"]["angka"].index(s)] *
                         frek["puluhan"]["persen"][frek["puluhan"]["angka"].index(p)] *
                         frek["satuan"]["persen"][frek["satuan"]["angka"].index(u)]
                     )
-                    kombinasi.append((f"{r}{s}{p}{u}", prob))
+                    kombinasi.append((f"{r}{s}{p}{u}", round(prob / 10000, 4)))  # Normalisasi biar rapi
     kombinasi = sorted(kombinasi, key=lambda x: -x[1])[:5]
     return pd.DataFrame(kombinasi, columns=["Kombinasi", "Bobot (%)"])
 
 def angka_dominan(df):
-    """Ambil 10 digit paling sering muncul dari seluruh 6 digit."""
     semua = "".join(df["6digit"].dropna().astype(str))
     hitung = Counter(semua)
     dominan = sorted(hitung.items(), key=lambda x: (-x[1], x[0]))[:10]
     return pd.DataFrame(dominan, columns=["Angka", "Frekuensi"])
 
-# === FUNGSI TAMPILKAN PREDIKSI ===
+# === Tampilan Prediksi ===
 def tampilkan_prediksi(namafile, df):
     st.markdown(f"### {namafile}")
     if df.empty:
         st.warning("Data kosong atau tidak valid.")
         return
 
-    # Ambil angka terakhir
     terakhir = df["6digit"].iloc[-1]
     st.write(f"Angka terakhir sebelum prediksi adalah: **{terakhir}**")
 
@@ -117,7 +121,6 @@ def tampilkan_prediksi(namafile, df):
 hari = datetime.now().strftime("%A %d-%m-%Y")
 st.info(f"📅 Hari ini: {hari}")
 
-# === PROSES SETIAP FILE ===
 for nama, file in FILES.items():
     if os.path.exists(file):
         df = baca_data(file)
