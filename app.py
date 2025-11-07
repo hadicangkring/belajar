@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
-from collections import defaultdict, Counter
+from collections import Counter
 
 # === Konfigurasi dasar ===
 st.set_page_config(page_title="🔢 Prediksi Kombinasi Angka", layout="centered")
@@ -14,8 +14,9 @@ def get_tanggal():
     return datetime.now().strftime("%A %d-%m-%Y")
 
 def ambil_angka_terakhir(df):
-    """Ambil angka terakhir yang valid dari file"""
-    for val in reversed(df.stack()):
+    """Ambil angka terakhir valid dari file tanpa error reversed()"""
+    vals = list(df.stack())
+    for val in reversed(vals):
         try:
             if pd.notna(val):
                 return str(int(val)).zfill(6)
@@ -24,12 +25,12 @@ def ambil_angka_terakhir(df):
     return "-"
 
 def hitung_frekuensi(df):
-    """Hitung frekuensi tiap posisi angka (6 digit tapi prediksi 4 digit terakhir)"""
+    """Hitung frekuensi per posisi (4 digit terakhir dari 6 digit data)"""
     posisi = ["satuan", "puluhan", "ratusan", "ribuan"]
     counts = {p: Counter() for p in posisi}
     for val in df.stack():
         try:
-            s = str(int(val)).zfill(6)[-4:]  # ambil 4 digit terakhir dari 6 digit
+            s = str(int(val)).zfill(6)[-4:]
             for i, p in enumerate(posisi):
                 counts[p][s[::-1][i]] += 1
         except Exception:
@@ -60,7 +61,7 @@ def prediksi_dari_frek(frek):
     return hasil
 
 def angka_dominan(df):
-    """Ambil 10 angka 4-digit yang paling sering muncul"""
+    """Ambil 10 kombinasi 4 digit paling sering muncul"""
     counter = Counter()
     for val in df.stack():
         try:
