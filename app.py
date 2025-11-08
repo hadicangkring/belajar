@@ -8,7 +8,7 @@ import os
 import math
 
 st.set_page_config(page_title="🔢 Prediksi Kombinasi Angka (Markov2)", layout="centered")
-st.title("🔢 Prediksi Kombinasi Angka — Markov Ordo 2 (Samaran + Hari/Pasaran)")
+st.title("🔢 Prediksi — Markov Ordo 2")
 st.caption("Model Markov orde-2; data: a.csv, b.csv, c.csv. Output: Top-K 6-digit (juga 4-digit terakhir).")
 
 # --------------------
