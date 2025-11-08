@@ -301,7 +301,7 @@ st.write("---")
 # --------------------
 # Combined
 # --------------------
-st.header("📦 Prediksi Gabungan (A + B + C)")
+st.header("📦 Gabungan (A + B + C)")
 if all_series:
     counts_all = build_markov2_counts(all_series)
     cond_probs_all = cond_probs_from_counts(counts_all, alpha=float(alpha))
